@@ -9,88 +9,124 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5; /* A neutral, soft background */
         }
-        /* Custom scrollbar for a cleaner look */
         .custom-scrollbar::-webkit-scrollbar {
             width: 6px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-            background: #f1f5f9;
+            background: transparent;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #94a3b8;
+            background: #cbd5e1;
             border-radius: 3px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #475569;
+            background: #94a3b8;
         }
-        /* Style for the active note in the list */
         .note-item.active {
-            background-color: #e0f2fe; /* light-blue-100 */
-            border-left-color: #0ea5e9; /* sky-500 */
+            background-color: #e0f2fe;
+            border-left-color: #0ea5e9;
+            font-weight: 600;
+            color: #0c4a6e;
+        }
+        #note-canvas {
+            cursor: crosshair;
+        }
+        #toast {
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+            transform: translateY(20px);
+        }
+        #toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        /* Styles for the collapsible sidebar */
+        #sidebar {
+            transition: width 0.3s ease-in-out;
+        }
+        .sidebar-text, .sidebar-header-text {
+            transition: opacity 0.2s ease-in-out, visibility 0.2s;
+        }
+        #sidebar.collapsed .sidebar-text, 
+        #sidebar.collapsed .sidebar-header-text,
+        #sidebar.collapsed #notes-list, 
+        #sidebar.collapsed #user-id-display {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
         }
     </style>
 </head>
-<body class="bg-slate-100 text-slate-800 antialiased">
+<body class="text-slate-800 antialiased">
 
-    <div id="app" class="flex h-screen w-screen">
+    <div id="app" class="flex h-screen w-screen p-4 gap-4">
 
-        <!-- Sidebar: Database View -->
-        <aside class="w-full md:w-1/4 lg:w-1/5 bg-slate-50 border-r border-slate-200 flex flex-col h-full">
-            <div class="p-4 border-b border-slate-200">
-                <h1 class="text-xl font-bold text-slate-900">Canvas-Notes</h1>
-                <p class="text-sm text-slate-500">Your ideas, connected.</p>
+        <!-- Sidebar: Collapsible -->
+        <aside id="sidebar" class="w-full md:w-1/4 lg:w-1/5 bg-white/80 backdrop-blur-lg rounded-xl shadow-lg flex flex-col h-full border border-slate-200/50">
+            <div class="p-4 border-b border-slate-200 flex items-start justify-between">
+                <div class="sidebar-header-text flex-grow">
+                    <h1 class="text-xl font-bold text-slate-900">Canvas-Notes</h1>
+                    <p class="text-sm text-slate-500">Your ideas, connected.</p>
+                </div>
+                <button id="toggle-sidebar-btn" class="p-2 rounded-md hover:bg-slate-200 transition-colors flex-shrink-0 ml-2">
+                    <!-- Icon will be set by JS -->
+                </button>
             </div>
             <div class="p-4">
-                <button id="new-note-btn" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200">
-                    + New Note
+                <button id="new-note-btn" class="w-full flex items-center justify-center gap-2 bg-sky-500 hover:bg-sky-600 text-white font-bold py-2.5 px-4 rounded-lg transition-all duration-200 hover:shadow-md hover:scale-105 active:scale-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    <span class="sidebar-text">New Note</span>
                 </button>
             </div>
             <nav id="notes-list" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-                <!-- Notes will be dynamically inserted here -->
                 <div id="loading-notes" class="p-4 text-center text-slate-500">Loading notes...</div>
             </nav>
-            <div class="p-2 border-t border-slate-200 text-xs text-slate-400">
-                <p>User ID: <span id="user-id-display" class="font-mono break-all"></span></p>
+            <div class="p-3 border-t border-slate-200 text-xs text-slate-400">
+                <p class="font-semibold text-slate-500 sidebar-text">User ID:</p>
+                <span id="user-id-display" class="font-mono break-all"></span>
             </div>
         </aside>
 
         <!-- Main Content: Canvas & Editor -->
-        <main class="flex-1 flex flex-col bg-white">
+        <main class="flex-1 flex flex-col bg-white rounded-xl shadow-lg border border-slate-200/50 overflow-hidden">
             <!-- Top Bar: Note Title & Actions -->
             <div class="flex items-center justify-between p-3 border-b border-slate-200 bg-slate-50/50">
-                <input type="text" id="note-title" placeholder="Untitled Note" class="text-lg font-semibold bg-transparent focus:outline-none focus:ring-0 border-none w-full text-slate-700">
-                <div class="flex items-center space-x-2">
-                    <button id="save-note-btn" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg transition-colors duration-200 disabled:bg-emerald-300 disabled:cursor-not-allowed">
+                <input type="text" id="note-title" placeholder="Untitled Note" class="text-lg font-semibold bg-transparent focus:outline-none focus:ring-0 border-none w-full text-slate-700 placeholder-slate-400">
+                <div class="flex items-center space-x-2 flex-shrink-0">
+                    <button id="save-note-btn" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg transition-all duration-200 disabled:bg-emerald-300 disabled:cursor-not-allowed disabled:scale-100 hover:shadow-md hover:scale-105 active:scale-100">
                         Save
                     </button>
-                    <button id="delete-note-btn" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-colors duration-200 disabled:bg-red-300 disabled:cursor-not-allowed">
-                        Delete
+                    <button id="delete-note-btn" class="p-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-all duration-200 disabled:bg-red-300 disabled:cursor-not-allowed disabled:scale-100 hover:shadow-md hover:scale-105 active:scale-100">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                     </button>
                 </div>
             </div>
 
             <!-- Toolbar -->
-            <div id="toolbar" class="flex items-center space-x-4 p-2 border-b border-slate-200">
+            <div id="toolbar" class="flex items-center flex-wrap gap-4 p-2 border-b border-slate-200">
                 <div class="flex items-center space-x-2">
                     <label for="color-picker" class="text-sm font-medium text-slate-600">Color:</label>
-                    <input type="color" id="color-picker" value="#000000" class="w-8 h-8 p-0 border-none rounded-md cursor-pointer">
+                    <input type="color" id="color-picker" value="#0f172a" class="w-8 h-8 p-0 border-none rounded-md cursor-pointer">
                 </div>
                 <div class="flex items-center space-x-2">
                     <label for="brush-size" class="text-sm font-medium text-slate-600">Size:</label>
                     <input type="range" id="brush-size" min="1" max="50" value="5" class="w-32 cursor-pointer">
-                    <span id="brush-size-value" class="text-sm w-6 text-center">5</span>
+                    <span id="brush-size-value" class="text-sm w-6 text-center font-mono bg-slate-200 rounded-md py-0.5">5</span>
                 </div>
-                <button id="eraser-btn" class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors">Eraser</button>
-                <button id="clear-canvas-btn" class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors">Clear</button>
+                <button id="eraser-btn" class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 2.5.5 4.5l6 6L2.5 15l2 2 4.54-4.54.5.5L13.5 17l2-2-4.5-4.5.5-.5L15.5 6l-2-2-4.5 4.5-.5-.5L4.5.5l-2 2z"/><path d="m21.5 21.5-6-6"/></svg>
+                    Eraser
+                </button>
+                <button id="clear-canvas-btn" class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors">Clear Canvas</button>
             </div>
 
-            <!-- Canvas -->
-            <div class="flex-1 w-full h-full overflow-hidden relative">
+            <!-- Canvas with paper-like background -->
+            <div class="flex-1 w-full h-full overflow-hidden relative bg-[#fdfaf3]">
                  <canvas id="note-canvas" class="absolute top-0 left-0"></canvas>
             </div>
              <!-- Toast Notification -->
-            <div id="toast" class="absolute bottom-5 right-5 bg-slate-800 text-white py-2 px-5 rounded-lg shadow-lg opacity-0 transition-opacity duration-300">
+            <div id="toast" class="absolute bottom-5 right-5 py-2 px-5 rounded-lg shadow-xl opacity-0">
                 Note saved!
             </div>
         </main>
@@ -104,23 +140,22 @@
 
         // --- App State & Config ---
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'canvas-note-app-default';
-       const firebaseConfig = {
-  apiKey: "AIzaSyAUNHAtYHQXLiXiWJ6t3f3NVqhWdeURu8A",
-  authDomain: "my-canvas-notes.firebaseapp.com",
-  projectId: "my-canvas-notes",
-  storageBucket: "my-canvas-notes.firebasestorage.app",
-  messagingSenderId: "871662063365",
-  appId: "1:871662063365:web:484ae48f086f9baea3b16c",
-  measurementId: "G-GX98HG5J6F"
-};
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const PAPER_COLOR = '#fdfaf3'; // Define paper color constant
+
         let db, auth, userId;
         let currentNoteId = null;
+        let currentNoteData = null;
         let isDrawing = false;
         let lastX = 0;
         let lastY = 0;
         let noteHasChanged = false;
+        let unsubscribeFromNotes = null;
+        let isSidebarOpen = true;
 
         // --- DOM Elements ---
+        const sidebar = document.getElementById('sidebar');
+        const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
         const canvas = document.getElementById('note-canvas');
         const ctx = canvas.getContext('2d');
         const notesListEl = document.getElementById('notes-list');
@@ -137,29 +172,65 @@
         const toastEl = document.getElementById('toast');
         const loadingNotesEl = document.getElementById('loading-notes');
 
-        // --- Canvas Setup & Resizing ---
+        // --- Sidebar Logic ---
+        function toggleSidebar() {
+            isSidebarOpen = !isSidebarOpen;
+            updateSidebarView();
+            // Resizing the canvas after the sidebar animation completes
+            setTimeout(resizeCanvas, 300);
+        }
+
+        function updateSidebarView() {
+            if (isSidebarOpen) {
+                sidebar.classList.remove('collapsed');
+                sidebar.style.width = ''; // Let CSS handle the width
+                toggleSidebarBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>`;
+            } else {
+                sidebar.classList.add('collapsed');
+                sidebar.style.width = '5rem'; // 80px
+                toggleSidebarBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>`;
+            }
+        }
+
+        // --- HIGH-DPI CANVAS RESIZING ---
         function resizeCanvas() {
             const parent = canvas.parentElement;
-            // Save current canvas content before resizing
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            canvas.width = parent.clientWidth;
-            canvas.height = parent.clientHeight;
-            // Restore content after resizing
-            ctx.putImageData(imageData, 0, 0);
-            // Re-apply drawing styles
+            const dpr = window.devicePixelRatio || 1;
+            const rect = parent.getBoundingClientRect();
+
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+
+            canvas.style.width = `${rect.width}px`;
+            canvas.style.height = `${rect.height}px`;
+
+            ctx.scale(dpr, dpr);
             ctx.lineJoin = 'round';
             ctx.lineCap = 'round';
             ctx.lineWidth = brushSizeSlider.value;
             ctx.strokeStyle = colorPicker.value;
+
+            if (currentNoteData && currentNoteData.canvasContent) {
+                const img = new Image();
+                img.onload = () => {
+                    ctx.drawImage(img, 0, 0, canvas.width / dpr, canvas.height / dpr);
+                };
+                img.src = currentNoteData.canvasContent;
+            }
         }
 
         // --- Drawing Logic ---
         function getCoordinates(e) {
             const rect = canvas.getBoundingClientRect();
+            let clientX, clientY;
             if (e.touches) {
-                return [e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top];
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
             }
-            return [e.clientX - rect.left, e.clientY - rect.top];
+            return [clientX - rect.left, clientY - rect.top];
         }
 
         function startDrawing(e) {
@@ -189,16 +260,22 @@
         }
 
         // --- Note Management ---
-        function clearCanvas() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            noteHasChanged = true;
-            updateSaveButtonState();
+        function clearCanvas(redraw = true) {
+            const dpr = window.devicePixelRatio || 1;
+            const width = canvas.width / dpr;
+            const height = canvas.height / dpr;
+            ctx.clearRect(0, 0, width, height);
+            if(redraw) {
+                noteHasChanged = true;
+                updateSaveButtonState();
+            }
         }
 
         function createNewNote() {
             currentNoteId = null;
+            currentNoteData = null;
             noteTitleEl.value = '';
-            clearCanvas();
+            clearCanvas(false);
             noteHasChanged = false;
             updateSaveButtonState();
             updateDeleteButtonState();
@@ -208,11 +285,11 @@
 
         async function saveNote() {
             if (!userId) {
-                showToast("Error: Not authenticated.", true);
+                showToast("Error: Not authenticated.", 'error');
                 return;
             }
             if (!noteHasChanged && currentNoteId) {
-                showToast("No changes to save.", false, 'info');
+                showToast("No changes to save.", 'info');
                 return;
             }
 
@@ -225,7 +302,6 @@
 
             try {
                 if (currentNoteId) {
-                    // Update existing note
                     const noteRef = doc(db, `artifacts/${appId}/public/data/notes`, currentNoteId);
                     await updateDoc(noteRef, {
                         title: title,
@@ -233,7 +309,6 @@
                         updatedAt: serverTimestamp()
                     });
                 } else {
-                    // Create new note
                     const newDocRef = await addDoc(notesCollectionRef, {
                         title: title,
                         canvasContent: canvasContent,
@@ -244,10 +319,10 @@
                     currentNoteId = newDocRef.id;
                 }
                 noteHasChanged = false;
-                showToast('Note saved successfully!');
+                showToast('Note saved successfully!', 'success');
             } catch (error) {
                 console.error("Error saving note: ", error);
-                showToast('Error saving note.', true);
+                showToast('Error saving note.', 'error');
             } finally {
                 saveNoteBtn.disabled = false;
                 saveNoteBtn.textContent = 'Save';
@@ -263,30 +338,30 @@
                 const docSnap = await getDoc(noteRef);
 
                 if (docSnap.exists()) {
-                    const noteData = docSnap.data();
+                    currentNoteData = docSnap.data();
                     currentNoteId = noteId;
-                    noteTitleEl.value = noteData.title;
+                    noteTitleEl.value = currentNoteData.title;
                     
-                    clearCanvas();
+                    clearCanvas(false);
                     
                     const img = new Image();
                     img.onload = () => {
-                        ctx.drawImage(img, 0, 0);
+                        const dpr = window.devicePixelRatio || 1;
+                        ctx.drawImage(img, 0, 0, canvas.width / dpr, canvas.height / dpr);
                         noteHasChanged = false;
                         updateSaveButtonState();
                     };
-                    img.src = noteData.canvasContent;
+                    img.src = currentNoteData.canvasContent;
                     
                     updateDeleteButtonState();
                     updateActiveNoteInList();
                 } else {
-                    console.log("No such document!");
-                    showToast("Could not find the selected note.", true);
+                    showToast("Could not find the selected note.", 'error');
                     createNewNote();
                 }
             } catch (error) {
                 console.error("Error loading note:", error);
-                showToast("Error loading note.", true);
+                showToast("Error loading note.", 'error');
             }
         }
 
@@ -297,25 +372,25 @@
                 try {
                     const noteRef = doc(db, `artifacts/${appId}/public/data/notes`, currentNoteId);
                     await deleteDoc(noteRef);
-                    showToast("Note deleted.");
-                    createNewNote(); // This will also trigger the onSnapshot update
+                    showToast("Note deleted.", 'info');
+                    createNewNote();
                 } catch (error) {
                     console.error("Error deleting note: ", error);
-                    showToast("Error deleting note.", true);
+                    showToast("Error deleting note.", 'error');
                 }
             }
         }
         
         // --- UI Updates ---
         function renderNotesList(docs) {
-            notesListEl.innerHTML = ''; // Clear list
+            notesListEl.innerHTML = '';
             if (docs.length === 0) {
-                 notesListEl.innerHTML = `<div class="p-4 text-center text-slate-500">No notes yet. Create one!</div>`;
+                 notesListEl.innerHTML = `<div class="p-4 text-center text-slate-500 sidebar-text">No notes yet. Create one!</div>`;
             } else {
                 docs.forEach(doc => {
                     const note = doc.data();
                     const noteEl = document.createElement('div');
-                    noteEl.classList.add('note-item', 'p-3', 'rounded-md', 'cursor-pointer', 'hover:bg-slate-200', 'transition-colors', 'border-l-4', 'border-transparent');
+                    noteEl.className = 'note-item p-3 rounded-md cursor-pointer hover:bg-slate-200/70 transition-colors border-l-4 border-transparent text-slate-700 truncate';
                     noteEl.dataset.id = doc.id;
                     noteEl.textContent = note.title;
                     noteEl.addEventListener('click', () => loadNote(doc.id));
@@ -328,11 +403,7 @@
 
         function updateActiveNoteInList() {
             document.querySelectorAll('.note-item').forEach(item => {
-                if (item.dataset.id === currentNoteId) {
-                    item.classList.add('active');
-                } else {
-                    item.classList.remove('active');
-                }
+                item.classList.toggle('active', item.dataset.id === currentNoteId);
             });
         }
         
@@ -344,21 +415,19 @@
             deleteNoteBtn.disabled = !currentNoteId;
         }
         
-        function showToast(message, isError = false, type = 'success') {
+        function showToast(message, type = 'success') {
             toastEl.textContent = message;
-            toastEl.classList.remove('bg-slate-800', 'bg-red-600', 'bg-blue-500');
+            toastEl.className = 'absolute bottom-5 right-5 py-2 px-5 rounded-lg shadow-xl opacity-0';
             
-            if (isError) {
-                 toastEl.classList.add('bg-red-600');
-            } else if (type === 'info') {
-                 toastEl.classList.add('bg-blue-500');
-            } else {
-                 toastEl.classList.add('bg-slate-800');
-            }
-
-            toastEl.classList.add('opacity-100');
+            const typeClasses = {
+                success: 'bg-emerald-500 text-white',
+                error: 'bg-red-500 text-white',
+                info: 'bg-sky-500 text-white'
+            };
+            toastEl.classList.add(...typeClasses[type].split(' '));
+            toastEl.classList.add('show');
             setTimeout(() => {
-                toastEl.classList.remove('opacity-100');
+                toastEl.classList.remove('show');
             }, 3000);
         }
 
@@ -366,7 +435,8 @@
         function setupEventListeners() {
             window.addEventListener('resize', resizeCanvas);
             
-            // Canvas drawing events
+            toggleSidebarBtn.addEventListener('click', toggleSidebar);
+
             canvas.addEventListener('mousedown', startDrawing);
             canvas.addEventListener('mousemove', draw);
             canvas.addEventListener('mouseup', stopDrawing);
@@ -375,16 +445,20 @@
             canvas.addEventListener('touchmove', draw, { passive: false });
             canvas.addEventListener('touchend', stopDrawing);
 
-            // Toolbar events
-            colorPicker.addEventListener('change', (e) => ctx.strokeStyle = e.target.value);
+            colorPicker.addEventListener('change', (e) => {
+                ctx.strokeStyle = e.target.value;
+                eraserBtn.classList.remove('bg-slate-200');
+            });
             brushSizeSlider.addEventListener('input', (e) => {
                 brushSizeValue.textContent = e.target.value;
                 ctx.lineWidth = e.target.value;
             });
-            eraserBtn.addEventListener('click', () => ctx.strokeStyle = '#FFFFFF'); // Use white for eraser
-            clearCanvasBtn.addEventListener('click', clearCanvas);
+            eraserBtn.addEventListener('click', () => {
+                ctx.strokeStyle = PAPER_COLOR; // Use paper color for eraser
+                eraserBtn.classList.add('bg-slate-200');
+            });
+            clearCanvasBtn.addEventListener('click', () => clearCanvas());
 
-            // Note action events
             newNoteBtn.addEventListener('click', createNewNote);
             saveNoteBtn.addEventListener('click', saveNote);
             deleteNoteBtn.addEventListener('click', deleteNote);
@@ -409,11 +483,11 @@
                 if (user) {
                     userId = user.uid;
                     userIdDisplay.textContent = userId;
-                    // Once authenticated, listen for notes
                     listenForNotes();
                 } else {
                     userId = null;
                     userIdDisplay.textContent = 'Not signed in';
+                    if (unsubscribeFromNotes) unsubscribeFromNotes();
                 }
             });
 
@@ -431,13 +505,13 @@
 
         function listenForNotes() {
             if (!userId) return;
-            const notesCollectionRef = collection(db, `artifacts/${appId}/public/data/notes`);
-            const q = query(notesCollectionRef); // Could add orderBy here if needed, e.g., orderBy("updatedAt", "desc")
+            if (unsubscribeFromNotes) unsubscribeFromNotes();
 
-            onSnapshot(q, (snapshot) => {
-                const notes = snapshot.docs;
-                // Simple in-memory sort since Firestore requires composite indexes for orderBy
-                const sortedNotes = notes.sort((a, b) => {
+            const notesCollectionRef = collection(db, `artifacts/${appId}/public/data/notes`);
+            const q = query(notesCollectionRef);
+
+            unsubscribeFromNotes = onSnapshot(q, (snapshot) => {
+                const sortedNotes = snapshot.docs.sort((a, b) => {
                     const timeA = a.data().updatedAt?.toMillis() || 0;
                     const timeB = b.data().updatedAt?.toMillis() || 0;
                     return timeB - timeA;
@@ -449,13 +523,17 @@
             });
         }
 
-
         // --- App Entry Point ---
         window.onload = async () => {
-            resizeCanvas();
             setupEventListeners();
             await initializeFirebase();
-            createNewNote(); // Start with a fresh note
+            // Start with sidebar collapsed on wider screens
+            if (window.innerWidth > 768) {
+                isSidebarOpen = false;
+            }
+            updateSidebarView();
+            resizeCanvas();
+            createNewNote();
         };
 
     </script>
