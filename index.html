@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas-Note: Notion meets Notability</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom scrollbar for a cleaner look */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        /* Style for the active note in the list */
+        .note-item.active {
+            background-color: #e0f2fe; /* light-blue-100 */
+            border-left-color: #0ea5e9; /* sky-500 */
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased">
+
+    <div id="app" class="flex h-screen w-screen">
+
+        <!-- Sidebar: Database View -->
+        <aside class="w-full md:w-1/4 lg:w-1/5 bg-slate-50 border-r border-slate-200 flex flex-col h-full">
+            <div class="p-4 border-b border-slate-200">
+                <h1 class="text-xl font-bold text-slate-900">Canvas-Notes</h1>
+                <p class="text-sm text-slate-500">Your ideas, connected.</p>
+            </div>
+            <div class="p-4">
+                <button id="new-note-btn" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200">
+                    + New Note
+                </button>
+            </div>
+            <nav id="notes-list" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                <!-- Notes will be dynamically inserted here -->
+                <div id="loading-notes" class="p-4 text-center text-slate-500">Loading notes...</div>
+            </nav>
+            <div class="p-2 border-t border-slate-200 text-xs text-slate-400">
+                <p>User ID: <span id="user-id-display" class="font-mono break-all"></span></p>
+            </div>
+        </aside>
+
+        <!-- Main Content: Canvas & Editor -->
+        <main class="flex-1 flex flex-col bg-white">
+            <!-- Top Bar: Note Title & Actions -->
+            <div class="flex items-center justify-between p-3 border-b border-slate-200 bg-slate-50/50">
+                <input type="text" id="note-title" placeholder="Untitled Note" class="text-lg font-semibold bg-transparent focus:outline-none focus:ring-0 border-none w-full text-slate-700">
+                <div class="flex items-center space-x-2">
+                    <button id="save-note-btn" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg transition-colors duration-200 disabled:bg-emerald-300 disabled:cursor-not-allowed">
+                        Save
+                    </button>
+                    <button id="delete-note-btn" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-colors duration-200 disabled:bg-red-300 disabled:cursor-not-allowed">
+                        Delete
+                    </button>
+                </div>
+            </div>
+
+            <!-- Toolbar -->
+            <div id="toolbar" class="flex items-center space-x-4 p-2 border-b border-slate-200">
+                <div class="flex items-center space-x-2">
+                    <label for="color-picker" class="text-sm font-medium text-slate-600">Color:</label>
+                    <input type="color" id="color-picker" value="#000000" class="w-8 h-8 p-0 border-none rounded-md cursor-pointer">
+                </div>
+                <div class="flex items-center space-x-2">
+                    <label for="brush-size" class="text-sm font-medium text-slate-600">Size:</label>
+                    <input type="range" id="brush-size" min="1" max="50" value="5" class="w-32 cursor-pointer">
+                    <span id="brush-size-value" class="text-sm w-6 text-center">5</span>
+                </div>
+                <button id="eraser-btn" class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors">Eraser</button>
+                <button id="clear-canvas-btn" class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors">Clear</button>
+            </div>
+
+            <!-- Canvas -->
+            <div class="flex-1 w-full h-full overflow-hidden relative">
+                 <canvas id="note-canvas" class="absolute top-0 left-0"></canvas>
+            </div>
+             <!-- Toast Notification -->
+            <div id="toast" class="absolute bottom-5 right-5 bg-slate-800 text-white py-2 px-5 rounded-lg shadow-lg opacity-0 transition-opacity duration-300">
+                Note saved!
+            </div>
+        </main>
+    </div>
+
+    <script type="module">
+        // Firebase Imports
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- App State & Config ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'canvas-note-app-default';
+       const firebaseConfig = {
+  apiKey: "AIzaSyAUNHAtYHQXLiXiWJ6t3f3NVqhWdeURu8A",
+  authDomain: "my-canvas-notes.firebaseapp.com",
+  projectId: "my-canvas-notes",
+  storageBucket: "my-canvas-notes.firebasestorage.app",
+  messagingSenderId: "871662063365",
+  appId: "1:871662063365:web:484ae48f086f9baea3b16c",
+  measurementId: "G-GX98HG5J6F"
+};
+        let db, auth, userId;
+        let currentNoteId = null;
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        let noteHasChanged = false;
+
+        // --- DOM Elements ---
+        const canvas = document.getElementById('note-canvas');
+        const ctx = canvas.getContext('2d');
+        const notesListEl = document.getElementById('notes-list');
+        const noteTitleEl = document.getElementById('note-title');
+        const newNoteBtn = document.getElementById('new-note-btn');
+        const saveNoteBtn = document.getElementById('save-note-btn');
+        const deleteNoteBtn = document.getElementById('delete-note-btn');
+        const colorPicker = document.getElementById('color-picker');
+        const brushSizeSlider = document.getElementById('brush-size');
+        const brushSizeValue = document.getElementById('brush-size-value');
+        const eraserBtn = document.getElementById('eraser-btn');
+        const clearCanvasBtn = document.getElementById('clear-canvas-btn');
+        const userIdDisplay = document.getElementById('user-id-display');
+        const toastEl = document.getElementById('toast');
+        const loadingNotesEl = document.getElementById('loading-notes');
+
+        // --- Canvas Setup & Resizing ---
+        function resizeCanvas() {
+            const parent = canvas.parentElement;
+            // Save current canvas content before resizing
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            canvas.width = parent.clientWidth;
+            canvas.height = parent.clientHeight;
+            // Restore content after resizing
+            ctx.putImageData(imageData, 0, 0);
+            // Re-apply drawing styles
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.lineWidth = brushSizeSlider.value;
+            ctx.strokeStyle = colorPicker.value;
+        }
+
+        // --- Drawing Logic ---
+        function getCoordinates(e) {
+            const rect = canvas.getBoundingClientRect();
+            if (e.touches) {
+                return [e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top];
+            }
+            return [e.clientX - rect.left, e.clientY - rect.top];
+        }
+
+        function startDrawing(e) {
+            e.preventDefault();
+            isDrawing = true;
+            [lastX, lastY] = getCoordinates(e);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+            noteHasChanged = true;
+            updateSaveButtonState();
+            
+            const [currentX, currentY] = getCoordinates(e);
+            
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(currentX, currentY);
+            ctx.stroke();
+            
+            [lastX, lastY] = [currentX, currentY];
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        // --- Note Management ---
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            noteHasChanged = true;
+            updateSaveButtonState();
+        }
+
+        function createNewNote() {
+            currentNoteId = null;
+            noteTitleEl.value = '';
+            clearCanvas();
+            noteHasChanged = false;
+            updateSaveButtonState();
+            updateDeleteButtonState();
+            updateActiveNoteInList();
+            noteTitleEl.focus();
+        }
+
+        async function saveNote() {
+            if (!userId) {
+                showToast("Error: Not authenticated.", true);
+                return;
+            }
+            if (!noteHasChanged && currentNoteId) {
+                showToast("No changes to save.", false, 'info');
+                return;
+            }
+
+            const title = noteTitleEl.value.trim() || 'Untitled Note';
+            const canvasContent = canvas.toDataURL('image/png');
+            const notesCollectionRef = collection(db, `artifacts/${appId}/public/data/notes`);
+
+            saveNoteBtn.disabled = true;
+            saveNoteBtn.textContent = 'Saving...';
+
+            try {
+                if (currentNoteId) {
+                    // Update existing note
+                    const noteRef = doc(db, `artifacts/${appId}/public/data/notes`, currentNoteId);
+                    await updateDoc(noteRef, {
+                        title: title,
+                        canvasContent: canvasContent,
+                        updatedAt: serverTimestamp()
+                    });
+                } else {
+                    // Create new note
+                    const newDocRef = await addDoc(notesCollectionRef, {
+                        title: title,
+                        canvasContent: canvasContent,
+                        createdAt: serverTimestamp(),
+                        updatedAt: serverTimestamp(),
+                        ownerId: userId
+                    });
+                    currentNoteId = newDocRef.id;
+                }
+                noteHasChanged = false;
+                showToast('Note saved successfully!');
+            } catch (error) {
+                console.error("Error saving note: ", error);
+                showToast('Error saving note.', true);
+            } finally {
+                saveNoteBtn.disabled = false;
+                saveNoteBtn.textContent = 'Save';
+                updateSaveButtonState();
+                updateDeleteButtonState();
+            }
+        }
+
+        async function loadNote(noteId) {
+            if (!userId) return;
+            try {
+                const noteRef = doc(db, `artifacts/${appId}/public/data/notes`, noteId);
+                const docSnap = await getDoc(noteRef);
+
+                if (docSnap.exists()) {
+                    const noteData = docSnap.data();
+                    currentNoteId = noteId;
+                    noteTitleEl.value = noteData.title;
+                    
+                    clearCanvas();
+                    
+                    const img = new Image();
+                    img.onload = () => {
+                        ctx.drawImage(img, 0, 0);
+                        noteHasChanged = false;
+                        updateSaveButtonState();
+                    };
+                    img.src = noteData.canvasContent;
+                    
+                    updateDeleteButtonState();
+                    updateActiveNoteInList();
+                } else {
+                    console.log("No such document!");
+                    showToast("Could not find the selected note.", true);
+                    createNewNote();
+                }
+            } catch (error) {
+                console.error("Error loading note:", error);
+                showToast("Error loading note.", true);
+            }
+        }
+
+        async function deleteNote() {
+            if (!currentNoteId || !userId) return;
+
+            if (confirm('Are you sure you want to delete this note? This cannot be undone.')) {
+                try {
+                    const noteRef = doc(db, `artifacts/${appId}/public/data/notes`, currentNoteId);
+                    await deleteDoc(noteRef);
+                    showToast("Note deleted.");
+                    createNewNote(); // This will also trigger the onSnapshot update
+                } catch (error) {
+                    console.error("Error deleting note: ", error);
+                    showToast("Error deleting note.", true);
+                }
+            }
+        }
+        
+        // --- UI Updates ---
+        function renderNotesList(docs) {
+            notesListEl.innerHTML = ''; // Clear list
+            if (docs.length === 0) {
+                 notesListEl.innerHTML = `<div class="p-4 text-center text-slate-500">No notes yet. Create one!</div>`;
+            } else {
+                docs.forEach(doc => {
+                    const note = doc.data();
+                    const noteEl = document.createElement('div');
+                    noteEl.classList.add('note-item', 'p-3', 'rounded-md', 'cursor-pointer', 'hover:bg-slate-200', 'transition-colors', 'border-l-4', 'border-transparent');
+                    noteEl.dataset.id = doc.id;
+                    noteEl.textContent = note.title;
+                    noteEl.addEventListener('click', () => loadNote(doc.id));
+                    notesListEl.appendChild(noteEl);
+                });
+            }
+            updateActiveNoteInList();
+            loadingNotesEl.style.display = 'none';
+        }
+
+        function updateActiveNoteInList() {
+            document.querySelectorAll('.note-item').forEach(item => {
+                if (item.dataset.id === currentNoteId) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+        }
+        
+        function updateSaveButtonState() {
+            saveNoteBtn.disabled = !noteHasChanged;
+        }
+
+        function updateDeleteButtonState() {
+            deleteNoteBtn.disabled = !currentNoteId;
+        }
+        
+        function showToast(message, isError = false, type = 'success') {
+            toastEl.textContent = message;
+            toastEl.classList.remove('bg-slate-800', 'bg-red-600', 'bg-blue-500');
+            
+            if (isError) {
+                 toastEl.classList.add('bg-red-600');
+            } else if (type === 'info') {
+                 toastEl.classList.add('bg-blue-500');
+            } else {
+                 toastEl.classList.add('bg-slate-800');
+            }
+
+            toastEl.classList.add('opacity-100');
+            setTimeout(() => {
+                toastEl.classList.remove('opacity-100');
+            }, 3000);
+        }
+
+        // --- Event Listeners ---
+        function setupEventListeners() {
+            window.addEventListener('resize', resizeCanvas);
+            
+            // Canvas drawing events
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseleave', stopDrawing);
+            canvas.addEventListener('touchstart', startDrawing, { passive: false });
+            canvas.addEventListener('touchmove', draw, { passive: false });
+            canvas.addEventListener('touchend', stopDrawing);
+
+            // Toolbar events
+            colorPicker.addEventListener('change', (e) => ctx.strokeStyle = e.target.value);
+            brushSizeSlider.addEventListener('input', (e) => {
+                brushSizeValue.textContent = e.target.value;
+                ctx.lineWidth = e.target.value;
+            });
+            eraserBtn.addEventListener('click', () => ctx.strokeStyle = '#FFFFFF'); // Use white for eraser
+            clearCanvasBtn.addEventListener('click', clearCanvas);
+
+            // Note action events
+            newNoteBtn.addEventListener('click', createNewNote);
+            saveNoteBtn.addEventListener('click', saveNote);
+            deleteNoteBtn.addEventListener('click', deleteNote);
+            noteTitleEl.addEventListener('input', () => {
+                noteHasChanged = true;
+                updateSaveButtonState();
+            });
+        }
+
+        // --- Firebase Initialization & Auth ---
+        async function initializeFirebase() {
+            if (!firebaseConfig.apiKey) {
+                document.body.innerHTML = '<div class="text-red-500 p-8">Firebase configuration is missing. The app cannot start.</div>';
+                return;
+            }
+            
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    userIdDisplay.textContent = userId;
+                    // Once authenticated, listen for notes
+                    listenForNotes();
+                } else {
+                    userId = null;
+                    userIdDisplay.textContent = 'Not signed in';
+                }
+            });
+
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Authentication failed:", error);
+                document.body.innerHTML = `<div class="text-red-500 p-8">Authentication failed: ${error.message}</div>`;
+            }
+        }
+
+        function listenForNotes() {
+            if (!userId) return;
+            const notesCollectionRef = collection(db, `artifacts/${appId}/public/data/notes`);
+            const q = query(notesCollectionRef); // Could add orderBy here if needed, e.g., orderBy("updatedAt", "desc")
+
+            onSnapshot(q, (snapshot) => {
+                const notes = snapshot.docs;
+                // Simple in-memory sort since Firestore requires composite indexes for orderBy
+                const sortedNotes = notes.sort((a, b) => {
+                    const timeA = a.data().updatedAt?.toMillis() || 0;
+                    const timeB = b.data().updatedAt?.toMillis() || 0;
+                    return timeB - timeA;
+                });
+                renderNotesList(sortedNotes);
+            }, (error) => {
+                console.error("Error listening for notes:", error);
+                loadingNotesEl.textContent = "Error loading notes.";
+            });
+        }
+
+
+        // --- App Entry Point ---
+        window.onload = async () => {
+            resizeCanvas();
+            setupEventListeners();
+            await initializeFirebase();
+            createNewNote(); // Start with a fresh note
+        };
+
+    </script>
+</body>
+</html>
